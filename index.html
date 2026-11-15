@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>小抽獎</title>
+<style>
+:root{
+  --blue:#2340d8; --paper:#fbfaf7; --ink:#14142b; --red:#e5383b; --gold:#ffd23f;
+  --line:#c9c5b8; --muted:#5d5d73;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{margin:0}
+body{
+  background:var(--blue); color:var(--ink); min-height:100vh;
+  font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",system-ui,sans-serif;
+  line-height:1.6; padding:20px 16px 48px;
+}
+main{max-width:640px; margin:0 auto}
+h1{color:#fff; font-size:2.2rem; font-weight:900; letter-spacing:.08em; margin:8px 0 2px}
+.sub{color:#cdd6ff; margin:0 0 20px}
+
+.ticket{background:var(--paper); border-radius:16px; padding:20px 18px; margin-bottom:18px; position:relative}
+.ticket.gold{background:var(--gold)}
+.perf{position:relative; border-top:2px dashed var(--line); margin:18px 0}
+.gold .perf{border-top-color:#c9a21a}
+.perf::before,.perf::after{
+  content:""; position:absolute; top:-12px; width:24px; height:24px; border-radius:50%; background:var(--blue);
+}
+.perf::before{left:-30px}
+.perf::after{right:-30px}
+
+#stage{min-height:150px; display:flex; align-items:center; justify-content:center; text-align:center}
+.hint{font-size:1.15rem; color:#6b5a10; margin:0}
+.flick{font-size:2.4rem; font-weight:900; margin:0; word-break:break-all}
+.winners{list-style:none; margin:0; padding:0; width:100%; display:grid; gap:10px}
+.win{display:flex; align-items:center; gap:14px; background:var(--paper); border-radius:12px; padding:10px 16px; text-align:left}
+.win .no{flex:none; min-width:2.2rem; height:2.2rem; border-radius:50%; background:var(--red); color:#fff; font-weight:800; display:grid; place-items:center}
+.win .nm{font-size:1.5rem; font-weight:800; word-break:break-all}
+.win.pop{animation:pop .35s ease-out both}
+@keyframes pop{from{transform:scale(.9); opacity:0}to{transform:scale(1); opacity:1}}
+
+.row{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+button{
+  font:inherit; font-weight:700; border:0; border-radius:10px; padding:12px 18px; cursor:pointer;
+  background:var(--ink); color:#fff;
+}
+button.main{background:var(--red); font-size:1.2rem; padding:14px 28px; flex:1 1 180px}
+button.ghost{background:transparent; color:var(--ink); box-shadow:inset 0 0 0 2px var(--ink)}
+button:disabled{opacity:.45; cursor:not-allowed}
+button:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid var(--blue); outline-offset:2px}
+
+label.f{display:block; font-weight:700; margin-bottom:6px}
+textarea{
+  width:100%; min-height:190px; resize:vertical; font:inherit; padding:12px; border-radius:10px;
+  border:2px solid var(--line); background:#fff; color:var(--ink);
+}
+input[type=number]{font:inherit; width:90px; padding:8px 10px; border-radius:8px; border:2px solid var(--line); background:#fff}
+.opts{display:grid; gap:8px; margin-top:12px}
+.opts label{display:flex; gap:8px; align-items:center; cursor:pointer}
+.opts input[type=checkbox]{width:20px; height:20px; accent-color:var(--blue)}
+.info{color:var(--muted); margin:10px 0 0; font-size:.95rem}
+#msg{min-height:1.6em; margin:12px 0 0; font-weight:700}
+#msg.err{color:#b4161b}
+#msg.ok{color:#0b6b3a}
+
+h2{font-size:1.2rem; margin:0 0 10px}
+#history{list-style:none; margin:0 0 14px; padding:0; display:grid; gap:8px}
+#history li{padding:8px 0; border-bottom:1px dashed var(--line)}
+#history li:last-child{border-bottom:0}
+#history .t{color:var(--muted); font-size:.9rem}
+.empty{color:var(--muted); margin:0 0 14px}
+
+@media (prefers-reduced-motion:reduce){.win.pop{animation:none}}
+</style>
+</head>
+<body>
+<main>
+  <h1>小抽獎</h1>
+  <p class="sub">貼上名單，按一下就抽出得獎者。</p>
+
+  <section class="ticket gold" aria-label="抽獎結果">
+    <div id="stage" aria-live="polite">
+      <p class="hint">準備好就按「開始抽獎」</p>
+    </div>
+    <div class="perf"></div>
+    <div class="row">
+      <button id="draw" class="main" type="button">開始抽獎</button>
+      <button id="copy" class="ghost" type="button" disabled>複製本輪名單</button>
+    </div>
+    <p id="msg" role="status" aria-live="polite"></p>
+  </section>
+
+  <section class="ticket" aria-label="抽獎設定">
+    <label class="f" for="names">參加者名單（每行一個名字）</label>
+    <textarea id="names" placeholder="小明&#10;小華&#10;小美"></textarea>
+    <div class="row" style="margin-top:10px">
+      <button id="sample" class="ghost" type="button">載入範例名單</button>
+      <button id="wipe" class="ghost" type="button">清空名單</button>
+    </div>
+    <p id="info" class="info"></p>
+
+    <div class="perf"></div>
+
+    <div class="row">
+      <label class="f" for="count" style="margin:0">每輪抽出人數</label>
+      <input id="count" type="number" min="1" step="1" value="1" inputmode="numeric">
+    </div>
+    <div class="opts">
+      <label><input id="noRepeat" type="checkbox" checked>已中獎的人不再參加下一輪</label>
+      <label><input id="dedupe" type="checkbox" checked>名單內相同名字只算一次</label>
+    </div>
+  </section>
+
+  <section class="ticket" aria-label="抽獎紀錄">
+    <h2>抽獎紀錄</h2>
+    <ul id="history"></ul>
+    <p id="noHistory" class="empty">還沒有紀錄。</p>
+    <button id="clear" class="ghost" type="button" disabled>清除紀錄</button>
+  </section>
+</main>
+
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  var namesEl = $('#names'), countEl = $('#count'), noRepeatEl = $('#noRepeat'), dedupeEl = $('#dedupe');
+  var drawBtn = $('#draw'), copyBtn = $('#copy'), clearBtn = $('#clear');
+  var stage = $('#stage'), msg = $('#msg'), info = $('#info');
+  var histEl = $('#history'), noHist = $('#noHistory');
+  var KEY = 'lucky-draw-v1';
+  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var rounds = [];          // [{n, time, winners:[]}]
+  var won = new Set();
+  var busy = false;
+
+  /* 安全的隨機整數 0..n-1（不用 Math.random，避免偏差） */
+  function rand(n) {
+    var a = new Uint32Array(1), lim = Math.floor(4294967296 / n) * n, x;
+    do { crypto.getRandomValues(a); x = a[0]; } while (x >= lim);
+    return x % n;
+  }
+
+  function parse() {
+    var raw = namesEl.value.split(/\r?\n/).map(function (s) { return s.trim(); }).filter(Boolean);
+    var list = dedupeEl.checked ? Array.from(new Set(raw)) : raw;
+    return { list: list, dupes: raw.length - list.length };
+  }
+
+  function pool() {
+    var skip = noRepeatEl.checked;
+    return parse().list.filter(function (n) { return !(skip && won.has(n)); });
+  }
+
+  function showMsg(text, type) {
+    msg.textContent = text || '';
+    msg.className = type || '';
+  }
+
+  function save() {
+    try {
+      localStorage.setItem(KEY, JSON.stringify({
+        names: namesEl.value, count: countEl.value,
+        noRepeat: noRepeatEl.checked, dedupe: dedupeEl.checked, rounds: rounds
+      }));
+    } catch (e) { /* 無法儲存時略過 */ }
+  }
+
+  function load() {
+    try {
+      var d = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (!d) return;
+      namesEl.value = d.names || '';
+      countEl.value = d.count || 1;
+      noRepeatEl.checked = d.noRepeat !== false;
+      dedupeEl.checked = d.dedupe !== false;
+      rounds = Array.isArray(d.rounds) ? d.rounds : [];
+      rounds.forEach(function (r) { r.winners.forEach(function (w) { won.add(w); }); });
+    } catch (e) { /* 資料壞掉就當作新的開始 */ }
+  }
+
+  function updateInfo() {
+    var p = parse(), text = '共 ' + p.list.length + ' 位參加者';
+    if (p.dupes > 0) text += '，已略過 ' + p.dupes + ' 個重複名字';
+    if (noRepeatEl.checked && won.size > 0) text += '；已中獎 ' + won.size + ' 位，還剩 ' + pool().length + ' 位可抽';
+    info.textContent = text + '。';
+  }
+
+  function renderHistory() {
+    histEl.textContent = '';
+    rounds.slice().reverse().forEach(function (r) {
+      var li = document.createElement('li');
+      var head = document.createElement('div');
+      head.textContent = '第 ' + r.n + ' 輪：' + r.winners.join('、');
+      var t = document.createElement('div');
+      t.className = 't';
+      t.textContent = r.time;
+      li.appendChild(head); li.appendChild(t);
+      histEl.appendChild(li);
+    });
+    noHist.hidden = rounds.length > 0;
+    clearBtn.disabled = rounds.length === 0;
+    copyBtn.disabled = rounds.length === 0;
+  }
+
+  function renderWinners(winners) {
+    stage.textContent = '';
+    var ul = document.createElement('ul');
+    ul.className = 'winners';
+    winners.forEach(function (w, i) {
+      var li = document.createElement('li');
+      li.className = 'win pop';
+      li.style.animationDelay = (i * 0.08) + 's';
+      var no = document.createElement('span'); no.className = 'no'; no.textContent = i + 1;
+      var nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = w;
+      li.appendChild(no); li.appendChild(nm);
+      ul.appendChild(li);
+    });
+    stage.appendChild(ul);
+  }
+
+  function sample(arr, n) {
+    var a = arr.slice();
+    for (var i = 0; i < n; i++) {
+      var j = i + rand(a.length - i), t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a.slice(0, n);
+  }
+
+  function pad(x) { return x < 10 ? '0' + x : '' + x; }
+
+  function draw() {
+    if (busy) return;
+    var n = parseInt(countEl.value, 10), p = pool();
+    if (!(n >= 1)) { showMsg('請輸入至少 1 的抽出人數。', 'err'); return; }
+    if (p.length === 0) {
+      showMsg(noRepeatEl.checked && won.size > 0
+        ? '所有人都已中獎。按「清除紀錄」可以重新開始。'
+        : '名單是空的。請先輸入參加者，每行一個名字。', 'err');
+      return;
+    }
+    if (n > p.length) { showMsg('目前只剩 ' + p.length + ' 位可抽，請把抽出人數調低。', 'err'); return; }
+    showMsg('');
+
+    var picks = sample(p, n);
+    function finish() {
+      var d = new Date();
+      var r = {
+        n: rounds.length + 1,
+        time: d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()) + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()),
+        winners: picks
+      };
+      rounds.push(r);
+      picks.forEach(function (w) { won.add(w); });
+      renderWinners(picks);
+      renderHistory(); updateInfo(); save();
+      busy = false; drawBtn.disabled = false;
+    }
+
+    if (reduce) { finish(); return; }
+    busy = true; drawBtn.disabled = true;
+    var t = 0;
+    var timer = setInterval(function () {
+      stage.textContent = '';
+      var f = document.createElement('p');
+      f.className = 'flick';
+      f.textContent = p[rand(p.length)];
+      stage.appendChild(f);
+      t += 70;
+      if (t >= 1600) { clearInterval(timer); finish(); }
+    }, 70);
+  }
+
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return fallbackCopy(text); });
+    }
+    return Promise.resolve(fallbackCopy(text));
+  }
+  function fallbackCopy(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    ta.remove();
+    return ok;
+  }
+
+  copyBtn.addEventListener('click', function () {
+    var r = rounds[rounds.length - 1];
+    if (!r) return;
+    var text = '第 ' + r.n + ' 輪中獎名單：\n' + r.winners.map(function (w, i) { return (i + 1) + '. ' + w; }).join('\n');
+    copyText(text).then(function (ok) {
+      showMsg(ok ? '已複製本輪名單。' : '複製失敗，請手動選取名單再複製。', ok ? 'ok' : 'err');
+    });
+  });
+
+  /* 清除紀錄：不用 confirm，改成按兩次確認 */
+  var armed = false, armTimer;
+  function disarm() { armed = false; clearTimeout(armTimer); clearBtn.textContent = '清除紀錄'; }
+  clearBtn.addEventListener('click', function () {
+    if (!armed) {
+      armed = true;
+      clearBtn.textContent = '再按一次確認清除';
+      armTimer = setTimeout(disarm, 3000);
+      return;
+    }
+    disarm();
+    rounds = []; won.clear();
+    stage.innerHTML = '<p class="hint">準備好就按「開始抽獎」</p>';
+    renderHistory(); updateInfo(); save();
+    showMsg('紀錄已清除，所有人可以重新參加。', 'ok');
+  });
+
+  $('#sample').addEventListener('click', function () {
+    namesEl.value = ['小明', '小華', '小美', '阿傑', '阿欣', '小龍', '小玲', '大偉', '佩佩', '阿輝', '小雲', '志強'].join('\n');
+    updateInfo(); save(); showMsg('');
+  });
+  $('#wipe').addEventListener('click', function () {
+    namesEl.value = ''; updateInfo(); save(); namesEl.focus();
+  });
+
+  drawBtn.addEventListener('click', draw);
+  namesEl.addEventListener('input', function () { updateInfo(); save(); });
+  [countEl, noRepeatEl, dedupeEl].forEach(function (el) {
+    el.addEventListener('change', function () { updateInfo(); save(); });
+  });
+
+  load();
+  renderHistory();
+  updateInfo();
+})();
+</script>
+</body>
+</html>
